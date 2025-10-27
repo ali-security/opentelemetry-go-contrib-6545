@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -201,4 +201,118 @@ func TestHandlerReadingNilBodySuccess(t *testing.T) {
 	}
 	h.ServeHTTP(rr, r)
 	assert.Equal(t, 200, rr.Result().StatusCode)
+}
+
+func TestHandlerFilterMethod(t *testing.T) {
+	for _, input := range []struct {
+		method      string
+		shouldTrace bool
+	}{
+		{http.MethodGet, true},
+		{http.MethodPost, true},
+		{http.MethodPut, true},
+		{http.MethodDelete, true},
+		{http.MethodPatch, true},
+		{http.MethodOptions, true},
+		{http.MethodHead, true},
+		{http.MethodTrace, true},
+		{"non_existing_method", false},
+	} {
+		t.Run(input.method, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+
+			spanRecorder := new(oteltest.SpanRecorder)
+			provider := oteltest.NewTracerProvider(
+				oteltest.WithSpanRecorder(spanRecorder),
+			)
+			meterimpl, meterProvider := oteltest.NewMeterProvider()
+
+			operation := "test_handler"
+
+			h := NewHandler(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					l, _ := LabelerFromContext(r.Context())
+					l.Add(attribute.String("test", "attribute"))
+
+					if _, err := io.WriteString(w, "hello world"); err != nil {
+						t.Fatal(err)
+					}
+				}), operation,
+				WithTracerProvider(provider),
+				WithMeterProvider(meterProvider),
+				WithPropagators(propagation.TraceContext{}),
+			)
+
+			r, err := http.NewRequest(input.method, "http://localhost/", strings.NewReader("foo"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.ServeHTTP(rr, r)
+
+			if input.shouldTrace {
+				assert.NotEmpty(t, meterimpl.MeasurementBatches)
+			} else {
+				assert.Empty(t, meterimpl.MeasurementBatches)
+			}
+
+			assert.Equal(t, http.StatusOK, rr.Result().StatusCode)
+			assert.Equal(t, "hello world", rr.Body.String())
+		})
+	}
+
+}
+
+func TestHandlerFilterUserAgent(t *testing.T) {
+	for _, input := range []struct {
+		userAgent   string
+		shouldTrace bool
+	}{
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", true},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", true},
+		{"Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36", true},
+		{"Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36", true},
+		{"user-agent", false},
+	} {
+		t.Run(input.userAgent, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+
+			spanRecorder := new(oteltest.SpanRecorder)
+			provider := oteltest.NewTracerProvider(
+				oteltest.WithSpanRecorder(spanRecorder),
+			)
+			meterimpl, meterProvider := oteltest.NewMeterProvider()
+
+			operation := "test_handler"
+
+			h := NewHandler(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					l, _ := LabelerFromContext(r.Context())
+					l.Add(attribute.String("test", "attribute"))
+
+					if _, err := io.WriteString(w, "hello world"); err != nil {
+						t.Fatal(err)
+					}
+				}), operation,
+				WithTracerProvider(provider),
+				WithMeterProvider(meterProvider),
+				WithPropagators(propagation.TraceContext{}),
+			)
+
+			r, err := http.NewRequest(http.MethodGet, "http://localhost/", strings.NewReader("foo"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Header.Set("User-Agent", input.userAgent)
+			h.ServeHTTP(rr, r)
+
+			if input.shouldTrace {
+				assert.NotEmpty(t, meterimpl.MeasurementBatches)
+			} else {
+				assert.Empty(t, meterimpl.MeasurementBatches)
+			}
+
+			assert.Equal(t, http.StatusOK, rr.Result().StatusCode)
+			assert.Equal(t, "hello world", rr.Body.String())
+		})
+	}
 }
