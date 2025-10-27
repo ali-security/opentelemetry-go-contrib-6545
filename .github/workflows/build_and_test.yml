@@ -36,11 +36,6 @@ jobs:
           make ci
           mkdir -p $TEST_RESULTS
           cp coverage.{txt,html} $TEST_RESULTS
-      - uses: codecov/codecov-action@v1
-        with:
-          file: ./coverage.txt
-          fail_ci_if_error: true
-          verbose: true
       - name: store test output
         uses: actions/upload-artifact@v4
         with:
