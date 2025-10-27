@@ -44,7 +44,7 @@ jobs:
       - name: store test output
         uses: actions/upload-artifact@v4
         with:
-          name: opentelemetry-go-test-output
+          name: opentelemetry-go-test-output_${{ matrix.go_version }}
           path: ${{ env.TEST_RESULTS }}
   integration:
     strategy:
@@ -65,5 +65,5 @@ jobs:
       - name: store test output
         uses: actions/upload-artifact@v4
         with:
-          name: opentelemetry-go-contrib-test-output
+          name: opentelemetry-go-contrib-test-output_${{ matrix.target }}
           path: ${{ env.TEST_RESULTS }}
