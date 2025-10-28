@@ -110,6 +110,14 @@ func (h *Handler) createMeasures() {
 	h.valueRecorders[ServerLatency] = serverLatencyMeasure
 }
 
+func normalizeMethod(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace, http.MethodConnect, http.MethodDelete, http.MethodPatch, http.MethodPost, http.MethodPut:
+		return method
+	}
+	return "OTHER"
+}
+
 // ServeHTTP serves HTTP requests (http.Handler)
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestStartTime := time.Now()
@@ -121,10 +129,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	rForMetrics := r.Clone(r.Context())
+	rForMetrics.Header.Del("User-Agent")
+	rForMetrics.Method = normalizeMethod(r.Method)
 	opts := append([]trace.SpanOption{
-		trace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", r)...),
-		trace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(r)...),
-		trace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(h.operation, "", r)...),
+		trace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", rForMetrics)...),
+		trace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(rForMetrics)...),
+		trace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(h.operation, "", rForMetrics)...),
 	}, h.spanStartOptions...) // start with the configured options
 
 	ctx := h.propagators.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
