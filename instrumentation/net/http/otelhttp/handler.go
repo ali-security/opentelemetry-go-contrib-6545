@@ -17,7 +17,6 @@ package otelhttp
 import (
 	"io"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/felixge/httpsnoop"
@@ -111,47 +110,10 @@ func (h *Handler) createMeasures() {
 	h.valueRecorders[ServerLatency] = serverLatencyMeasure
 }
 
-func methodFilter(r *http.Request) bool {
-	switch r.Method {
-	case http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut, http.MethodTrace:
-		return true
-	default:
-		return false
-	}
-}
-
-func userAgentFilter(r *http.Request) bool {
-	regexes := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \((?:windows nt|macintosh; intel mac os x|x11; linux)[^)]*\).*?chrome/\d{2,3}\.[\d.]* safari/\d+\.\d+`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(x11; cros [^)]*\).*?chrome/\d{2,3}\.[\d.]* safari/\d+\.\d+`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(linux; android [^)]*\).*?chrome/\d{2,3}\.[\d.]* mobile safari/\d+\.\d+`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(linux; android [^)]*\).*?version/4\.0 .*?chrome/\d{2,3}\.[\d.]* mobile safari/\d+\.\d+`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(linux; android [^)]*\).*?version/4\.0 .*?chrome/\d{2,3}\.[\d.]* mobile safari/\d+\.\d+`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(ipad;.*\) applewebkit/\d+\.\d+\.\d+ .* version/\d+(?:\.\d+)* .* safari/\d+(?:\.\d+)*`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \(macintosh; intel mac os x [\d_]+\) applewebkit/\d+\.\d+\.\d+ .* version/\d+(?:\.\d+)* safari/\d+(?:\.\d+)*`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \([^)]*\) .* firefox/\d+(?:\.\d+)*`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \([^)]*\) .* edg[a]?/\d+(?:\.\d+)*`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \([^)]*\) .* opr/\d+(?:\.\d+)*`),
-		regexp.MustCompile(`(?i)^mozilla/5\.0 \([^)]*\) .* seamonkey/\d+(?:\.\d+)*`),
-	}
-
-	userAgent := r.UserAgent()
-	if userAgent == "" {
-		return true
-	}
-	for _, regex := range regexes {
-		if regex.MatchString(userAgent) {
-			return true
-		}
-	}
-	return false
-}
-
 // ServeHTTP serves HTTP requests (http.Handler)
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestStartTime := time.Now()
-	filters := append([]Filter{methodFilter, userAgentFilter}, h.filters...)
-	for _, f := range filters {
+	for _, f := range h.filters {
 		if !f(r) {
 			// Simply pass through to the handler if a filter rejects the request
 			h.handler.ServeHTTP(w, r)
